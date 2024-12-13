@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/scittle@0.6.17/dist/scittle.js" type="application/javascript"></script>
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scittle@0.6.17/dist/scittle.reagent.js" type="application/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scittle@0.6.17/dist/scittle.re-frame.js" type="application/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scittle@0.6.17/dist/scittle.cljs-ajax.js" type="application/javascript"></script>
+    <script type="application/x-scittle">
+(ns proto
+  (:require [reagent.core :as r]
+         [reagent.dom :as rdom]
+         [re-frame.core :as rf]
+				 [ajax.core :refer [GET]]
+				 ))
+
+(defn log [& args] (apply js/console.log args))
+
+;(rf/reg-fx :stop-debounce
+;        (fn [id]
+;          (js/clearTimeout (@timeouts id))
+;          (swap! timeouts dissoc id)))
+;
+;(rf/reg-event-fx 
+;   ::cancel-search
+;   (fn [_ _]
+;     {:stop-debounce ::search}))
+;
+;(rf/reg-event-db
+;   ::do-search
+;   (fn [db [_ search-string]]
+;	   (log "in ::do-search with search-string =" search-string)
+;     (assoc db :search-string search-string)))
+
+(rf/reg-event-db ::click   (fn [db _] (update db :clicks (fnil inc 0))))
+
+(rf/reg-event-db ::init-db (fn [db _] 
+  (log "::init-db keys db:" (keys db))
+  (update db :clicks (constantly 0))))
+
+(rf/reg-sub      ::clicks  :clicks)
+(rf/reg-sub      ::data    :data)
+(rf/reg-sub      ::data    :data)
+(rf/reg-sub      ::loading?     :loading?)
+
+(defn <sub [& args] @(rf/subscribe (vec args)))
+(defn >evt [& args] (rf/dispatch (vec args)))
+
+(defn action-view [{:strs [tarife] :as data}]
+  [:div
+    [:datalist {:id "tarife"}
+	  	(for [{:strs [tarifcode tarifname]} tarife]
+	  		^{:key tarifcode} [:option {:value tarifname}])]
+		[:input {:list "tarife" :id "inputtarif1", :name "input-tarif1", :placeholder "type here..."}]
+		[:input {:list "tarife" :id "inputtarif2", :name "input-tarif2", :placeholder "type here..."}]
+
+	  [:div (str (keys data) ", " (count tarife) ", " (keys (first tarife)) )]])
+
+(defn my-component []
+  (let [clicks (<sub ::clicks)
+	      loading? (<sub ::loading?)
+	      data   (<sub ::data)]
+		[:<>
+      [:div
+        [:p "Clicks: " clicks]
+        [:p [:button {:on-click (fn [_] (>evt ::click))}
+              "Click me!"]]]
+			[:div (str "loading " loading?)]
+			(when (and (not loading?) data)
+				[action-view data])
+			]))
+
+(rf/reg-event-db
+  ::load-data-response-ok
+  (fn
+    [db [_ response]] 
+    (-> db
+        (assoc :loading? false) ;; take away that "Loading ..." UI 
+        (assoc :data (js->clj response :keywordize-keys true))))) 
+
+(rf/reg-event-db
+  ::load-data-response-bad
+  (fn
+    [db [_ response]] 
+    (-> db
+        (assoc :loading? false) ;; take away that "Loading ..." UI 
+        (assoc :data (js->clj response :keywordize-keys true))))) 
+
+(rf/reg-event-db
+   ::load-data
+   (fn [db _]
+	   (GET "http://pl9actkvs.integration.uniqa.at:8080/api/data" 
+		   {
+		    :handler       #(rf/dispatch [::load-data-response-ok  %1])
+        :error-handler #(rf/dispatch [::load-data-response-bad %1])})
+		(assoc db :loading? true)))
+
+(rf/dispatch-sync [::init-db])
+(rf/dispatch      [::load-data])
+
+(rdom/render [my-component] (.getElementById js/document "reagent"))
+    </script>
+  </head>
+  <body>
+    <div id="reagent"></div>
+  </body>
+</html>
